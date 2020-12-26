@@ -1,0 +1,207 @@
+import win.ui;
+import win.ui.grid;
+import win.inputBox;
+import fonts.fontAwesome;
+/*DSG{{*/
+var frmVps = win.form(text="winXray ";right=959;bottom=591;bgcolor=16777215)
+frmVps.add(
+btnAdd={cls="plus";text="添加";left=621;top=365;right=727;bottom=395;align="left";db=1;dr=1;font=LOGFONT(h=-13);iconStyle={align="left";font=LOGFONT(h=-13;name='FontAwesome');padding={left=12}};iconText='\uF1C4';notify=1;textPadding={left=30};z=7};
+btnDelete={cls="plus";text="删除";left=830;top=362;right=936;bottom=392;align="left";db=1;dr=1;font=LOGFONT(h=-13);iconStyle={align="left";font=LOGFONT(h=-13;name='FontAwesome');padding={left=12}};iconText='\uF1C4';notify=1;textPadding={left=30};z=6};
+btnSave={cls="plus";text="保存";left=718;top=363;right=824;bottom=393;align="left";db=1;dr=1;font=LOGFONT(h=-13);iconStyle={align="left";font=LOGFONT(h=-13;name='FontAwesome');padding={left=12}};iconText='\uF1C4';notify=1;textPadding={left=30};z=5};
+btnXRayAction={cls="plus";text="启动xxxray";left=506;top=362;right=612;bottom=392;align="left";db=1;dr=1;font=LOGFONT(h=-13);iconStyle={align="left";font=LOGFONT(h=-13;name='FontAwesome');padding={left=12}};iconText='\uF1C4';notify=1;textPadding={left=30};z=3};
+edit={cls="edit";left=6;top=405;right=953;bottom=585;bgcolor=0;color=16777215;db=1;dl=1;dr=1;edge=1;hscroll=1;multiline=1;vscroll=1;z=2};
+editServer={cls="edit";left=304;top=368;right=499;bottom=393;edge=1;z=8};
+listview={cls="listview";left=4;top=5;right=954;bottom=358;db=1;dl=1;dr=1;dt=1;edge=1;editable=true;gridLines=1;z=1};
+static={cls="static";text="vps";left=19;top=370;right=260;bottom=398;transparent=1;z=4}
+)
+/*}}*/
+
+// 数据视图
+var grid = win.ui.grid(frmVps.listview);//创建数据视图
+grid.readonlyColums = { [1] = true };//设置禁止编辑的列
+
+// 使用sqlite3存储数据
+import sqlite;
+var db = sqlite("/testParameters.db");
+
+var makeSampleTable = function() {
+    //删除表 
+    db.exec("DROP TABLE @tablename", {
+		tablename = "vps"
+	} );
+	// 创建表
+	db.exec( "CREATE TABLE IF NOT EXISTS @tablename(id INTEGER PRIMARY KEY, type, server, port, note);",{
+    	tablename = "vps"
+	} ) 
+	// 插入示例数据
+	var cmd = db.prepare("INSERT INTO vps VALUES (NULL,@type,@server,@port,@note);" );
+	for(i=1;10;1){
+    	var server = "192.168.1." + tostring(i)
+		cmd.step(
+    		type = "ssh";
+    		server = server;
+    		port = "22";
+    		note = "openwrt"
+ 		)
+	}
+}
+
+var init = function(){
+    
+    var needSampleInput = win.inputBox();
+    needSampleInput.text = "是否创建示例数据？[y/n]";
+    var needSample = needSampleInput.doModal();
+    
+    if(needSample == "y"){
+    	makeSampleTable()
+    } else {
+    	print("不显示示例！")	
+    }
+	//直接支持常用数据库的getTable函数返回的数据格式
+	var dataTable = db.getTable("SELECT * FROM [vps] ");
+	
+	//可选自定义显示列名
+	grid.setColumns({"ID";"类型";"服务器";"端口";"备注"})
+	
+	//直接让liswview控件显示数据库的查询结果
+	grid.setTable( dataTable )
+	
+}
+
+init()
+
+frmVps.listview.onnotify = function(id,code,ptr){
+    
+    select(code) {
+    	case  0xFFFFFF9B/*_LVN_ITEMCHANGED*/ {
+    		// 更改了行或列
+    		var nm = frmVps.listview.getNotifyMessage(code,ptr)
+    		if(frmVps.listview.selIndex){
+        		frmVps.static.text = frmVps.listview.getItemText(nm.iItem,3) + ":" + frmVps.listview.getItemText(nm.iItem,4)
+        	}
+    	}
+    	case 0xFFFFFFFB/*_NM_RCLICK*/  {
+    		var x,y = win.getCursorPos();
+    		frmVps.popmenu.popup(x,y,true);//弹出菜单
+    	}
+    	case 0xFFFFFF97/*_LVN_BEGINLABELEDIT*/ { 
+	 		return false; //允许编辑项
+	 	}
+	 	case 0xFFFFFF50/*_LVN_ENDLABELEDITW*/ {
+    		var hostInfo = frmVps.listview.getNotifyDispInfo(code,ptr);
+    		
+    		if(hostInfo ? hostInfo.item.text ){
+    			
+    			frmVps.static.text = hostInfo.item.text;
+    			frmVps.listview.setItemText(hostInfo.item.text, hostInfo.item.iItem, hostInfo.item.iSubItem);
+    		}
+		 }
+    }
+    
+}
+
+frmVps.btnXRayAction.skin(
+	background = { 
+		hover = "/res/images/btn-hover.png";
+		focus = "/res/images/btn-focus.jpg";
+		active = "/res/images/btn-active.png";
+		disabled = "/res/images/btn-disabled.png"; 
+	}
+)
+
+frmVps.btnXRayAction.oncommand = function(id,event){
+	// using startXXXray flag
+    import process;
+    import console;
+	console.open();
+	var server = frmVps.static.text;
+	if( ! ..string.indexOf(server,"@") ){
+    	server = "root@" + server;
+    }
+    var dest,port = string.match(server,"(.+)\:(\d+)");
+    if(dest&&port){
+    	server = "-p" + port +" " + dest;
+    }
+    prcs = process("ssh","-t " + server + " echo hello")
+    console.pause();
+    
+	win.delay(1000);
+	frmVps.btnXRayAction.disabledText = null;
+}
+
+frmVps.btnSave.skin(
+	background = { 
+		hover = "/res/images/btn-hover.png";
+		focus = "/res/images/btn-focus.jpg";
+		active = "/res/images/btn-active.png";
+		disabled = "/res/images/btn-disabled.png"; 
+	}
+)
+
+frmVps.btnSave.oncommand = function(id,event){
+		//改 - exec函数也可以用一个表添加简单的命名参数( 添加并过滤分隔符 )
+		var row = frmVps.listview.selIndex;
+		
+		var id = frmVps.listview.getItemText(row, 1)
+		var server = frmVps.listview.getItemText(row, 3);
+		var port = frmVps.listview.getItemText(row, 4);
+		var note = frmVps.listview.getItemText(row, 5);
+		
+		//import console;
+    	//console.varDump(id);
+		
+		db.exec("UPDATE [vps] SET server=@server, port=@port, note=@note WHERE id=@id;",{
+			server = server;
+			port = port;
+			note = note;
+			id = id;
+		});
+		var dataTable = db.getTable("SELECT * FROM [vps] ");
+		grid.setTable( dataTable )
+}
+
+
+frmVps.btnDelete.skin(
+	background = { 
+		hover = "/res/images/btn-hover.png";
+		focus = "/res/images/btn-focus.jpg";
+		active = "/res/images/btn-active.png";
+		disabled = "/res/images/btn-disabled.png"; 
+	}
+)
+
+frmVps.btnDelete.oncommand = function(id,event){
+	var row = frmVps.listview.selIndex;	
+	var id = frmVps.listview.getItemText(row, 1)
+	db.exec("DELETE from vps WHERE id = @id;",{
+			id = id;
+		} );
+	var dataTable = db.getTable("SELECT * FROM [vps] ");
+	grid.setTable( dataTable )
+}
+
+frmVps.btnAdd.skin(
+	background = { 
+		hover = "/res/images/btn-hover.png";
+		focus = "/res/images/btn-focus.jpg";
+		active = "/res/images/btn-active.png";
+		disabled = "/res/images/btn-disabled.png"; 
+	}
+)
+frmVps.btnAdd.oncommand = function(id,event){
+	var server = frmVps.editServer.text;
+	var cmd = db.prepare("INSERT INTO [vps] VALUES (NULL,@type,@server,@port,@note);" );
+	cmd.step(
+    	type = "ssh";
+    	server = server;
+    	port = "22";
+    	note = "openwrt"
+ 	)
+ 	var dataTable = db.getTable("SELECT * FROM [vps] ");
+	grid.setTable( dataTable )
+	frmVps.editServer.text = ""
+}
+
+frmVps.show();
+
+win.loopMessage();
